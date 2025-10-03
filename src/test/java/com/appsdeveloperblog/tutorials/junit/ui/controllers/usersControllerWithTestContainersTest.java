@@ -5,55 +5,53 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
-@Testcontainers
 @ActiveProfiles("test")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-public class usersControllerWithTestContainersTest {
+public class UsersControllerWithTestContainersTest {
 @Autowired
 private TestRestTemplate testRestTemplate;
     private String authorizationToken;
 
-    @Container
-    private static MySQLContainer mySQLcontainer = new MySQLContainer("mysql:8.0.36")
+    @ServiceConnection
+    private static  MySQLContainer mySQLContainer = new MySQLContainer("mysql:8.4.0");
+
+    static {
+        mySQLContainer.start();
+    }
+
 //            .withDatabaseName("photo_app")
-              .withUsername("test")
-              .withPassword("test");
+//            .withUsername("test")
+//            .withPassword("test");
 //
 //    // Added back: explicitly map container props into Spring's datasource
-    @DynamicPropertySource
-    private static void overrideProperties(DynamicPropertyRegistry registry) {
-       registry.add("spring.datasource.url", mySQLcontainer::getJdbcUrl);
-       registry.add("spring.datasource.username", mySQLcontainer::getUsername);
-    registry.add("spring.datasource.password", mySQLcontainer::getPassword);
-      registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
-   }
+//    @DynamicPropertySource
+//    static void overrideProperties(DynamicPropertyRegistry registry) {
+//        registry.add("spring.datasource.url", mySQL::getJdbcUrl);
+//        registry.add("spring.datasource.username", mySQL::getUsername);
+//        registry.add("spring.datasource.password", mySQL::getPassword);
+//        registry.add("spring.datasource.driver-class-name", () -> "com.mysql.cj.jdbc.Driver");
+//    }
 
     @Order(1)
     @Test
     @DisplayName("The MySQL container is created and running")
     void isTestContainerRunning() {
-        assertTrue(mySQLcontainer.isCreated(), "MySQL container has not been created");
-        assertTrue(mySQLcontainer.isRunning(), "MySQL container is not running");
+        assertTrue(mySQLContainer.isCreated(), "MySQL container has not been created");
+        assertTrue(mySQLContainer.isRunning(), "MySQL container is not running");
     }
     @Order(2)
     @Test
