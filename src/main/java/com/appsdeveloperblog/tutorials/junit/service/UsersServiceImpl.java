@@ -1,21 +1,20 @@
 package com.appsdeveloperblog.tutorials.junit.service;
 
-import com.appsdeveloperblog.tutorials.junit.exceptions.UsersServiceException;
 import com.appsdeveloperblog.tutorials.junit.io.UserEntity;
 import com.appsdeveloperblog.tutorials.junit.io.UsersRepository;
 import com.appsdeveloperblog.tutorials.junit.shared.UserDto;
+import com.appsdeveloperblog.userservice.exception.UsersServiceException;
 import org.modelmapper.ModelMapper;
 import org.modelmapper.TypeToken;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.lang.reflect.Type;
@@ -27,15 +26,15 @@ import java.util.UUID;
 public class UsersServiceImpl implements UsersService {
 
     private UsersRepository usersRepository;
-    private BCryptPasswordEncoder bCryptPasswordEncoder;
+    private PasswordEncoder  passwordEncoder;
 
     @Autowired
     private ModelMapper modelMapper;
 
     @Autowired
-    public UsersServiceImpl(UsersRepository usersRepository, BCryptPasswordEncoder bCryptPasswordEncoder) {
+    public UsersServiceImpl(UsersRepository usersRepository, PasswordEncoder passwordEncoder) {
         this.usersRepository = usersRepository;
-        this.bCryptPasswordEncoder = bCryptPasswordEncoder;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
@@ -48,7 +47,7 @@ public class UsersServiceImpl implements UsersService {
 
         String publicUserId = UUID.randomUUID().toString();
         userEntity.setUserId(publicUserId);
-        userEntity.setEncryptedPassword(bCryptPasswordEncoder.encode(user.getPassword()));
+        userEntity.setEncryptedPassword("{bcrypt}" + passwordEncoder.encode(user.getPassword()));
 
         UserEntity storedUserDetails = usersRepository.save(userEntity);
 
@@ -96,5 +95,13 @@ public class UsersServiceImpl implements UsersService {
 
         return new User(userEntity.getEmail(), userEntity.getEncryptedPassword(), new ArrayList<>());
     }
+    @Override
+    public UserDto getUserByUserId(String userId) {
+        UserEntity userEntity = usersRepository.findByUserId(userId);
 
+        if (userEntity == null)
+            throw new UsernameNotFoundException("User ID: " + userId);
+
+        return modelMapper.map(userEntity, UserDto.class);
+    }
 }

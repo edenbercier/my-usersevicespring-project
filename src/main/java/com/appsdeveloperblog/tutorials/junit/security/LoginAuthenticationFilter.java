@@ -3,7 +3,6 @@ package com.appsdeveloperblog.tutorials.junit.security;
 import com.appsdeveloperblog.tutorials.junit.service.UsersService;
 import com.appsdeveloperblog.tutorials.junit.shared.SpringApplicationContext;
 import com.appsdeveloperblog.tutorials.junit.shared.UserDto;
-import com.appsdeveloperblog.tutorials.junit.ui.request.UserLoginRequestModel;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -24,10 +23,11 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.Map;
 
-public class AuthenticationFilter extends UsernamePasswordAuthenticationFilter {
+public class LoginAuthenticationFilter extends UsernamePasswordAuthenticationFilter {
     private final AuthenticationManager authenticationManager;
 
-    public AuthenticationFilter(AuthenticationManager authenticationManager) {
+    public LoginAuthenticationFilter(AuthenticationManager authenticationManager) {
+      super();
         this.authenticationManager = authenticationManager;
     }
 

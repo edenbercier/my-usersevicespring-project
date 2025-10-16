@@ -1,7 +1,5 @@
 package com.appsdeveloperblog.tutorials.junit.security;
 
-import com.appsdeveloperblog.tutorials.junit.io.UserEntity;
-import com.appsdeveloperblog.tutorials.junit.io.UsersRepository;
 import io.jsonwebtoken.Jwts;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -14,14 +12,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
-public class AuthorizationFilter extends BasicAuthenticationFilter {
+public class JwtTokenValidationFilter extends BasicAuthenticationFilter {
 
-    UsersRepository userRepository;
-
-    public AuthorizationFilter(AuthenticationManager authManager,
-                               UsersRepository userRepository) {
+    public JwtTokenValidationFilter(AuthenticationManager authManager) {
         super(authManager);
-        this.userRepository = userRepository;
     }
 
     @Override
@@ -29,39 +23,39 @@ public class AuthorizationFilter extends BasicAuthenticationFilter {
                                     HttpServletResponse res,
                                     FilterChain chain) throws IOException, ServletException {
 
-        String header = req.getHeader(SecurityConstants.HEADER_STRING);
+        String token = req.getHeader(SecurityConstants.HEADER_STRING);
 
-        if (header == null || !header.startsWith(SecurityConstants.TOKEN_PREFIX)) {
-            chain.doFilter(req, res);
-            return;
+        if (token != null && token.startsWith(SecurityConstants.TOKEN_PREFIX)) {
+            UsernamePasswordAuthenticationToken authentication = getAuthentication(token);
+            if (authentication != null) {
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            }
         }
 
-        UsernamePasswordAuthenticationToken authentication = getAuthentication(req);
-        SecurityContextHolder.getContext().setAuthentication(authentication);
         chain.doFilter(req, res);
     }
 
-    private UsernamePasswordAuthenticationToken getAuthentication(HttpServletRequest request) {
-        String token = request.getHeader(SecurityConstants.HEADER_STRING);
+    private UsernamePasswordAuthenticationToken getAuthentication(String token) {
+        try {
 
-        if (token != null) {
+            token = token.replace(SecurityConstants.TOKEN_PREFIX, "").trim();
 
-            token = token.replace(SecurityConstants.TOKEN_PREFIX, "");
-
+            // Parse the token and extract subject (username/email)
             String user = Jwts.parser()
-                    .setSigningKey( SecurityConstants.TOKEN_SECRET)
-                    .parseClaimsJws( token )
+                    .setSigningKey(SecurityConstants.TOKEN_SECRET)
+                    .parseClaimsJws(token)
                     .getBody()
                     .getSubject();
 
             if (user != null) {
+                logger.info("✅ Parsed user from JWT: " + user);
                 return new UsernamePasswordAuthenticationToken(user, null, null);
             }
-
-            return null;
+        } catch (Exception e) {
+            logger.info("❌ Failed to parse JWT: " + e.getMessage());
+            e.printStackTrace();
         }
 
         return null;
     }
-
 }

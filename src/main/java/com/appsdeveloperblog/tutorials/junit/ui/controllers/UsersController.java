@@ -7,6 +7,7 @@ import com.appsdeveloperblog.tutorials.junit.ui.response.UserRest;
 import org.modelmapper.ModelMapper;
 import org.modelmapper.TypeToken;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,6 +18,7 @@ import java.util.List;
 @Validated
 @RestController
 @RequestMapping("/users")
+
 public class UsersController {
 
     private final UsersService usersService;
@@ -27,7 +29,6 @@ public class UsersController {
         this.usersService = usersService;
         this.modelMapper = modelMapper;
     }
-
     @PostMapping
     public UserRest createUser(@RequestBody @Valid UserDetailsRequestModel userDetails) throws Exception {
         UserDto userDto = modelMapper.map(userDetails, UserDto.class);
@@ -37,6 +38,12 @@ public class UsersController {
         return modelMapper.map(createdUser, UserRest.class);
     }
 
+    @GetMapping(path = "/{userId}")
+    public ResponseEntity<UserRest> getUser(@PathVariable String userId) {
+        UserDto userDto = usersService.getUserByUserId(userId);
+        UserRest returnValue = modelMapper.map(userDto, UserRest.class);
+        return ResponseEntity.ok(returnValue);
+    }
     @GetMapping
     public List<UserRest> getUsers(@RequestParam(value = "page", defaultValue = "0") int page,
                                    @RequestParam(value = "limit", defaultValue = "2") int limit) {
@@ -45,5 +52,7 @@ public class UsersController {
         return modelMapper.map(users, listType);
     }
 
+    }
 
-}
+
+
