@@ -7,7 +7,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 @Disabled
 @SpringBootTest
 class UsersServiceSpringBootApplicationTest {
-    @Test
-    void contextLoads() {
-    }
+
+  @Test
+  void contextLoads() {
+  }
 }

@@ -4,6 +4,10 @@ import com.appsdeveloperblog.tutorials.junit.io.UserEntity;
 import com.appsdeveloperblog.tutorials.junit.io.UsersRepository;
 import com.appsdeveloperblog.tutorials.junit.shared.UserDto;
 import com.appsdeveloperblog.userservice.exception.UsersServiceException;
+import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import org.modelmapper.ModelMapper;
 import org.modelmapper.TypeToken;
 import org.springframework.beans.BeanUtils;
@@ -17,91 +21,94 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.lang.reflect.Type;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
 @Service("usersService")
 public class UsersServiceImpl implements UsersService {
 
-    private UsersRepository usersRepository;
-    private PasswordEncoder  passwordEncoder;
+  private UsersRepository usersRepository;
+  private PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private ModelMapper modelMapper;
+  @Autowired
+  private ModelMapper modelMapper;
 
-    @Autowired
-    public UsersServiceImpl(UsersRepository usersRepository, PasswordEncoder passwordEncoder) {
-        this.usersRepository = usersRepository;
-        this.passwordEncoder = passwordEncoder;
+  @Autowired
+  public UsersServiceImpl(UsersRepository usersRepository, PasswordEncoder passwordEncoder) {
+    this.usersRepository = usersRepository;
+    this.passwordEncoder = passwordEncoder;
+  }
+
+  @Override
+  public UserDto createUser(UserDto user) {
+
+    if (usersRepository.findByEmail(user.getEmail()) != null) {
+      throw new UsersServiceException("Record already exists");
     }
 
-    @Override
-    public UserDto createUser(UserDto user) {
+    UserEntity userEntity = modelMapper.map(user, UserEntity.class);
 
-        if (usersRepository.findByEmail(user.getEmail()) != null)
-            throw new UsersServiceException("Record already exists");
+    String publicUserId = UUID.randomUUID().toString();
+    userEntity.setUserId(publicUserId);
+    userEntity.setEncryptedPassword("{bcrypt}" + passwordEncoder.encode(user.getPassword()));
 
-        UserEntity userEntity = modelMapper.map(user, UserEntity.class);
+    UserEntity storedUserDetails = usersRepository.save(userEntity);
 
-        String publicUserId = UUID.randomUUID().toString();
-        userEntity.setUserId(publicUserId);
-        userEntity.setEncryptedPassword("{bcrypt}" + passwordEncoder.encode(user.getPassword()));
+    UserDto returnValue = modelMapper.map(storedUserDetails, UserDto.class);
 
-        UserEntity storedUserDetails = usersRepository.save(userEntity);
+    return returnValue;
+  }
 
-        UserDto returnValue  = modelMapper.map(storedUserDetails, UserDto.class);
+  @Override
+  public List<UserDto> getUsers(int page, int limit) {
+    List<UserDto> returnValue = new ArrayList<>();
 
-        return returnValue;
+    if (page > 0) {
+      page -= 1;
     }
 
-    @Override
-    public List<UserDto> getUsers(int page, int limit) {
-        List<UserDto> returnValue = new ArrayList<>();
+    Pageable pageableRequest = PageRequest.of(page, limit);
 
-        if (page > 0) page -=1;
+    Page<UserEntity> usersPage = usersRepository.findAll(pageableRequest);
+    List<UserEntity> users = usersPage.getContent();
 
-        Pageable pageableRequest = PageRequest.of(page, limit);
+    Type listType = new TypeToken<List<UserDto>>() {
+    }.getType();
+    returnValue = new ModelMapper().map(users, listType);
 
-        Page<UserEntity> usersPage = usersRepository.findAll(pageableRequest);
-        List<UserEntity> users = usersPage.getContent();
+    return returnValue;
+  }
 
-        Type listType = new TypeToken<List<UserDto>>() {}.getType();
-        returnValue = new ModelMapper().map(users, listType);
+  @Override
+  public UserDto getUser(String email) {
+    UserEntity userEntity = usersRepository.findByEmail(email);
 
-        return returnValue;
+    if (userEntity == null) {
+      throw new UsernameNotFoundException(email);
     }
 
-    @Override
-    public UserDto getUser(String email) {
-        UserEntity userEntity = usersRepository.findByEmail(email);
+    UserDto returnValue = new UserDto();
+    BeanUtils.copyProperties(userEntity, returnValue);
 
-        if (userEntity == null)
-            throw new UsernameNotFoundException(email);
+    return returnValue;
+  }
 
-        UserDto returnValue = new UserDto();
-        BeanUtils.copyProperties(userEntity, returnValue);
+  @Override
+  public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+    UserEntity userEntity = usersRepository.findByEmail(email);
 
-        return returnValue;
+    if (userEntity == null) {
+      throw new UsernameNotFoundException(email);
     }
 
-    @Override
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        UserEntity userEntity = usersRepository.findByEmail(email);
+    return new User(userEntity.getEmail(), userEntity.getEncryptedPassword(), new ArrayList<>());
+  }
 
-        if (userEntity == null)
-            throw new UsernameNotFoundException(email);
+  @Override
+  public UserDto getUserByUserId(String userId) {
+    UserEntity userEntity = usersRepository.findByUserId(userId);
 
-        return new User(userEntity.getEmail(), userEntity.getEncryptedPassword(), new ArrayList<>());
+    if (userEntity == null) {
+      throw new UsernameNotFoundException("User ID: " + userId);
     }
-    @Override
-    public UserDto getUserByUserId(String userId) {
-        UserEntity userEntity = usersRepository.findByUserId(userId);
 
-        if (userEntity == null)
-            throw new UsernameNotFoundException("User ID: " + userId);
-
-        return modelMapper.map(userEntity, UserDto.class);
-    }
+    return modelMapper.map(userEntity, UserDto.class);
+  }
 }

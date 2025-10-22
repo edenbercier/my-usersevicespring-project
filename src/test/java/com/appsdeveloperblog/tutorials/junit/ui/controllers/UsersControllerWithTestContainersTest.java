@@ -1,177 +1,206 @@
 package com.appsdeveloperblog.tutorials.junit.ui.controllers;
 
+import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.emptyOrNullString;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.lessThan;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
+
 import com.appsdeveloperblog.tutorials.junit.security.SecurityConstants;
 import com.appsdeveloperblog.tutorials.junit.service.UsersService;
-import com.appsdeveloperblog.tutorials.junit.shared.UserDto;
-import com.appsdeveloperblog.tutorials.junit.ui.request.UserDetailsRequestModel;
-import com.appsdeveloperblog.tutorials.junit.ui.response.UserRest;
-import com.appsdeveloperblog.userservice.ui.model.User;
 import io.restassured.RestAssured;
+import io.restassured.builder.RequestSpecBuilder;
+import io.restassured.builder.ResponseSpecBuilder;
+import io.restassured.filter.log.RequestLoggingFilter;
+import io.restassured.filter.log.ResponseLoggingFilter;
 import io.restassured.http.ContentType;
-import io.restassured.http.Header;
-import io.restassured.http.Headers;
 import io.restassured.response.Response;
+import java.util.HashMap;
+import java.util.Map;
+import javax.sql.DataSource;
+import org.hamcrest.Matcher; // ✅ add this line
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.*;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.Statement;
-import java.util.Arrays;
-import java.util.List;
-
-import static io.restassured.RestAssured.given;
-import static org.junit.jupiter.api.Assertions.*;
-
 @ActiveProfiles("test")
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class UsersControllerWithTestContainersTest {
 
-    @Autowired
-    private TestRestTemplate testRestTemplate;
+  @Container
+  @ServiceConnection
+  private static final MySQLContainer<?> mySQLContainer = new MySQLContainer<>("mysql:8.4.0");
 
-    @Autowired
-    private DataSource dataSource;
+   private final String TEST_EMAIL = "test@test.com";
+   private final String TEST_PASSWORD = "123456789";
 
-    @Autowired
-    private UsersService usersService;
+   private JSONObject loginPayload;
 
-    private String authorizationToken;
+  static {
+    mySQLContainer.start();
+  }
 
-    @Container
-    @ServiceConnection
-    private static MySQLContainer<?> mySQLContainer = new MySQLContainer<>("mysql:8.4.0");
+  @Autowired
+  private TestRestTemplate testRestTemplate;
+  @Autowired
+  private DataSource dataSource;
+  @Autowired
+  private UsersService usersService;
+  private String authorizationToken;
+  private JSONObject signUpPayload;
+  @LocalServerPort
+  private int port;
 
-    static {
-        mySQLContainer.start();
+  // private final RequestLoggingFilter requestLoggingFilter = new RequestLoggingFilter();
+  //  private final ResponseLoggingFilter responseLoggingFilter = new ResponseLoggingFilter();
+  @BeforeAll
+  void setupRestAssuredAndAuthenticate() throws JSONException {
+    RestAssured.baseURI = "http://localhost";
+    RestAssured.port = port;
+    RestAssured.filters(new RequestLoggingFilter());
+    RestAssured.filters(new ResponseLoggingFilter());
+
+    RestAssured.requestSpecification = new RequestSpecBuilder()
+        .setContentType(ContentType.JSON)
+        .setAccept(ContentType.JSON)
+        .addFilter(new RequestLoggingFilter())
+        .build();
+    RestAssured.responseSpecification = new ResponseSpecBuilder()
+        //    .expectStatusCode(anyOf(is(200),is(201)))
+        .expectResponseTime(lessThan(2000L))
+        //  .expectBody("id", notNullValue())
+        .build();
+
+    // 1️⃣ Register the user via HTTP
+    JSONObject signupPayload = new JSONObject()
+        .put("firstName", "Eden")
+        .put("lastName", "Bercier")
+        .put("email", "test@test.com")
+        .put("password", "123456789")
+        .put("repeatPassword", "123456789");
+
+    given()
+        .contentType(ContentType.JSON)
+        .body(signupPayload.toString())
+        .when()
+        .post("/users")
+        .then()
+        .statusCode(anyOf(is(200), is(201)));
+
+    // 2️⃣ Retry login (polling up to 5 times if needed)
+    loginPayload = new JSONObject()
+        .put("email", "test@test.com")
+        .put("password", "123456789");
+
+    int retries = 5;
+    for (int i = 0; i < retries; i++) {
+      Response response = given()
+          .contentType(ContentType.JSON)
+          .body(loginPayload.toString())
+          .when()
+          .post("/login");
+
+      if (response.statusCode() == 200) {
+        this.authorizationToken = response
+            .getHeader(SecurityConstants.HEADER_STRING)
+            .replace("Bearer ", "");
+        return;
+      }
+
+      try {
+        Thread.sleep(200); // short, controlled delay between retries
+      } catch (InterruptedException ignored) {
+      }
     }
 
-    @LocalServerPort
-    private int port;
+    throw new IllegalStateException("Failed to log in after registering user.");
+  }
 
-    @BeforeAll
-    void setupRestAssured() {
-        RestAssured.baseURI = "http://localhost";
-        RestAssured.port = port;
-    }
+  @Test
+  @DisplayName("The MySQL container is created and running")
+  void isTestContainerRunning() {
 
-    @BeforeAll
-    void seedTestUser() {
-        System.out.println("Seeding initial test user...");
+    given()
 
-        // Directly create UserDto (no need for UserDetailsRequestModel)
-        UserDto dto = new UserDto();
+        .auth()
+        .oauth2(authorizationToken)
+        .accept(ContentType.JSON)
 
-        dto.setFirstName("Eden");
-        dto.setLastName("Bee");
-        dto.setEmail("edenbercier@gmail.com");
-        dto.setPassword("12345678");
+        .when()
+        .get("/users")
 
-        try {
-            usersService.createUser(dto);
-            System.out.println("✅ Seed user created before tests.");
-        } catch (Exception e) {
-            System.out.println("ℹ️ Seed user may already exist: " + e.getMessage());
-        }
-    }
+        .then()
+        .statusCode(200)
+        .body("size()", greaterThanOrEqualTo(1))
+        .body("[0].email", not(emptyOrNullString()));
+  }
 
+  @Test
+  @DisplayName("GET /Users access fails when Missing JWT")
+  void testGetUsers_whenMissingJWT_returns403() {
+    // Arrange
+    given()
+        .accept(ContentType.JSON)
 
-    @BeforeEach
-    void loginBeforeEach() throws JSONException {
-        JSONObject loginCredentials = new JSONObject();
-        loginCredentials.put("email", "edenbercier@gmail.com");
-        loginCredentials.put("password", "12345678");
+        .when()
+        .get("/users")
+        .then()
+        .statusCode(403);
+  }
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+  @Test
+  @DisplayName("GET /users authorized access works with valid JWT succeds")
+  void testAuthorizedAccessToUsers_withValidJWTToken_shouldReturnUsers() {
+    given()
+        .auth()
+        .oauth2(authorizationToken)
+        .accept(ContentType.JSON)
 
-        HttpEntity<String> request = new HttpEntity<>(loginCredentials.toString(), headers);
+        .when()
+        .get("/users")
+        .then()
+        .statusCode(200)
+        .body("size()", greaterThanOrEqualTo(1))
+        .body("[0].email", not(emptyOrNullString()));
+  }
 
-        ResponseEntity<Void> response = testRestTemplate.postForEntity("/login", request, Void.class);
-        assertEquals(HttpStatus.OK, response.getStatusCode(), "Login should succeed");
+  @Test
+  @DisplayName("GET /users Login works with valid JWT")
+  void testUserLogin_withValidCredentials_shouldTokenAndUserId() {
+    // Arrange
+    Map<String, Object> loginPayload = Map.of(
+        "email", TEST_EMAIL,
+        "password", TEST_PASSWORD
+    );
+    Matcher<?> idNotNull = notNullValue();
+    // Act
+    given()
+        .contentType(ContentType.JSON)
+        .body(loginPayload)
+        .when()
+        .post("/login")
+        .then()
+        .statusCode(200)
+        .header(SecurityConstants.HEADER_STRING, not(emptyOrNullString()))
+        .body("id", idNotNull);
 
-        authorizationToken = response.getHeaders()
-                .getValuesAsList(SecurityConstants.HEADER_STRING)
-                .stream()
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Missing Authorization header after login"));
+  }
 
-        assertNotNull(authorizationToken, "Authorization token must not be null");
-    }
-
-    void clearUsersTable() throws Exception {
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
-            stmt.execute("DELETE FROM users");
-        }
-    }
-
-    @Test
-    @Order(1)
-    @DisplayName("The MySQL container is created and running")
-    void isTestContainerRunning() {
-        assertTrue(mySQLContainer.isCreated(), "MySQL container has not been created");
-        assertTrue(mySQLContainer.isRunning(), "MySQL container is not running");
-    }
-
-    @Test
-    @Order(2)
-    @DisplayName("GET /Users requires JWT")
-    void testGetUsers_whenMissingJWT_returns403() {
-        // Arrange
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Accept", "application/json");
-
-        HttpEntity<?> requestEntity = new HttpEntity<>(null, headers);
-
-        // Act
-        ResponseEntity<List<UserRest>> response = testRestTemplate.exchange("/users",
-                HttpMethod.GET,
-                requestEntity,
-                new ParameterizedTypeReference<>() {});
-
-        // Assert
-        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode(),
-                "Http status code should have been 403");
-    }
-
-    @Test
-    @Order(3)
-    @DisplayName("GET /users works with valid JWT")
-    void testGetUsers_whenValidJWTProvided_returnsUsers() {
-        // Arrange
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
-        headers.setBearerAuth(authorizationToken.replace("Bearer ",""));
-
-        HttpEntity<?> requestEntity = new HttpEntity<>(headers);
-
-        // Act
-        ResponseEntity<List<UserRest>> response = testRestTemplate.exchange("/users",
-                HttpMethod.GET,
-                requestEntity,
-                new ParameterizedTypeReference<>() {});
-
-        // Assert
-        assertEquals(HttpStatus.OK, response.getStatusCode(),
-                "HTTP Status code should be 200");
-        assertNotNull(response.getBody(), "Response body should not be null");
-        assertTrue(response.getBody().size() >= 1,
-                "There should be at least one user in the list");
-    }
 }
