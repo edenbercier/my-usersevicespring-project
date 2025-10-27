@@ -70,9 +70,17 @@ public class LoginAuthenticationFilter extends UsernamePasswordAuthenticationFil
     UsersService userService = (UsersService) SpringApplicationContext.getBean("usersService");
     UserDto userDto = userService.getUser(userName);
 
-    res.addHeader(SecurityConstants.HEADER_STRING, SecurityConstants.TOKEN_PREFIX + token);
-    res.addHeader("UserID", userDto.getUserId());
+    // ✅ Build response JSON
+    Map<String, Object> responseBody = Map.of(
+        "userId", userDto.getUserId(),
+        "token", SecurityConstants.TOKEN_PREFIX + token
+    );
+
+    // ✅ Set content type and write JSON
+    res.setContentType("application/json");
+    res.setCharacterEncoding("UTF-8");
+    new ObjectMapper().writeValue(res.getWriter(), responseBody);
+  }
 
   }
 
-}

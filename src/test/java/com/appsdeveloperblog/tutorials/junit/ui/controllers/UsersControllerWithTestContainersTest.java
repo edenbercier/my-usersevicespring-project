@@ -1,5 +1,6 @@
 package com.appsdeveloperblog.tutorials.junit.ui.controllers;
 
+import static io.restassured.RestAssured.get;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.emptyOrNullString;
@@ -48,10 +49,10 @@ public class UsersControllerWithTestContainersTest {
   @ServiceConnection
   private static final MySQLContainer<?> mySQLContainer = new MySQLContainer<>("mysql:8.4.0");
 
-   private final String TEST_EMAIL = "test@test.com";
-   private final String TEST_PASSWORD = "123456789";
+  private final String TEST_EMAIL = "test@test.com";
+  private final String TEST_PASSWORD = "123456789";
 
-   private JSONObject loginPayload;
+  private JSONObject loginPayload;
 
   static {
     mySQLContainer.start();
@@ -117,19 +118,30 @@ public class UsersControllerWithTestContainersTest {
           .when()
           .post("/login");
 
+      // Debugging output (can keep temporarily)
+      System.out.println("Login attempt #" + (i + 1));
+      System.out.println("Status: " + response.statusCode());
+      System.out.println("Headers: " + response.getHeaders());
+      System.out.println("Body: " + response.asString());
+
       if (response.statusCode() == 200) {
-        this.authorizationToken = response
-            .getHeader(SecurityConstants.HEADER_STRING)
-            .replace("Bearer ", "");
-        return;
+        String token = response
+            .jsonPath()
+            .getString("token");
+        if (token != null && token.startsWith("Bearer ")) {
+          this.authorizationToken = token.replace("Bearer ", "");
+          return; // ✅ Successful login
+        } else {
+          throw new IllegalStateException(
+              "Token missing or malformed in body: " + response.asString());
+        }
       }
 
       try {
-        Thread.sleep(200); // short, controlled delay between retries
+        Thread.sleep(200);
       } catch (InterruptedException ignored) {
       }
     }
-
     throw new IllegalStateException("Failed to log in after registering user.");
   }
 
@@ -182,15 +194,13 @@ public class UsersControllerWithTestContainersTest {
   }
 
   @Test
-  @DisplayName("GET /users Login works with valid JWT")
-  void testUserLogin_withValidCredentials_shouldTokenAndUserId() {
-    // Arrange
-    Map<String, Object> loginPayload = Map.of(
+  @DisplayName("POST /login returns token and userId in JSON body")
+  void testUserLogin_withValidCredentials_returnsJwtAndUserId() {
+    Map<String, String> loginPayload = Map.of(
         "email", TEST_EMAIL,
         "password", TEST_PASSWORD
     );
-    Matcher<?> idNotNull = notNullValue();
-    // Act
+
     given()
         .contentType(ContentType.JSON)
         .body(loginPayload)
@@ -198,9 +208,41 @@ public class UsersControllerWithTestContainersTest {
         .post("/login")
         .then()
         .statusCode(200)
-        .header(SecurityConstants.HEADER_STRING, not(emptyOrNullString()))
-        .body("id", idNotNull);
+        .contentType(ContentType.JSON)
+        .body("userId", not(emptyOrNullString()))
+        .body("token", not(emptyOrNullString()));
+  }
+//  Updated your backend to return JSON (the modern way)
+// Validated null before calling .replace(...)
+// Used jsonPath() to read the token from body
+// Made login setup logic retry and fail loudly if it fails
+// Logged full responses during test failures (great for debugging)
+// Cleaned up your tests to reflect updated login behavior
+// Followed professional standards of error handling and parsing
+// Test Then When You send Valid Token You can receive User Associated with that JWT
+    @Test
+    @DisplayName("Get /Users returns User Info when JWT is valid")
+    void testGetUser_withValidJWT_returnsUserDetails() {
+    Map<String, String> loginPayload = Map.of(
+        "email", TEST_EMAIL,
+        "password", TEST_PASSWORD
+    );
+
+  given()//Arrange
+      .auth()
+      .oauth2(authorizationToken)
+      .accept(ContentType.JSON)
+      .when()
+      .get("/users")
+      .then()//Assert
+      .statusCode(200)
+      .contentType(ContentType.JSON)
+         .body("[0].email", equalTo(TEST_EMAIL))
+         .body("[0].firstName", equalTo("Eden"))
+         .body("[0].lastName", equalTo("Bercier"))
+         .body("[0].userId", not(emptyOrNullString()))
+         .body("[0].password", not(emptyOrNullString()))
+         .body("[0].repeatPassword", not(emptyOrNullString()));
+    }
 
   }
-
-}
