@@ -2,13 +2,17 @@ package com.appsdeveloperblog.tutorials.junit.ui.controllers;
 
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.emptyOrNullString;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import com.appsdeveloperblog.tutorials.junit.io.UsersRepository;
 import com.appsdeveloperblog.tutorials.junit.security.SecurityConstants;
+import com.appsdeveloperblog.tutorials.junit.service.UsersService;
+import com.appsdeveloperblog.tutorials.junit.shared.UserDto;
 import com.appsdeveloperblog.tutorials.junit.ui.response.UserRest;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
@@ -16,12 +20,11 @@ import java.util.List;
 import java.util.UUID;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.MethodOrderer;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
-import org.junit.jupiter.api.TestMethodOrder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -35,56 +38,33 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class UsersControllerIntegrationTest {
 
 
   @Value("${server.port}")
   private int serverPort;
-
-
-  @LocalServerPort
-  private int localServerPort;
-
+  private final String TEST_EMAIL = "login_" + UUID.randomUUID() + "@test.com";
+  private final String TEST_PASSWORD = "12345678";
 
   private String authorizationToken;
-  private final TestRestTemplate testRestTemplate = new TestRestTemplate();
+  @LocalServerPort
+  private int localServerPort;
+  @Autowired
+  private UsersService usersService;
+  @Autowired
+  private TestRestTemplate testRestTemplate;
+  @Autowired
+  private UsersRepository usersRepository;
 
 
-  private String registerAndLogin(String email, String password) throws JSONException {
-    JSONObject signupPayload = new JSONObject()
-        .put("firstName", "Eden")
-        .put("lastName", "Bercier")
-        .put("email", email)
-        .put("password", password)
-        .put("repeatPassword", password);
-
-    given()
-        .contentType(ContentType.JSON)
-        .body(signupPayload.toString())
-        .when()
-        .post("/users")
-        .then()
-        .statusCode(anyOf(is(200), is(201), is(204)));
-
-    JSONObject loginPayload = new JSONObject()
-        .put("email", email)
-        .put("password", password);
-
-    Response response = given()
-        .contentType(ContentType.JSON)
-        .body(loginPayload.toString())
-        .when()
-        .post("/login");
-
-    assertEquals(200, response.getStatusCode(), "Login failed for " + email);
-    return response.getHeader(SecurityConstants.HEADER_STRING).replace("Bearer ", "");
+  @BeforeEach
+  void cleanDatabase() {
+    usersRepository.deleteAll();
   }
 
   @Test
   @DisplayName("User can be created")
-  @Order(1)
   void testCreateUser_whenValidDetailsProvided_returnsUserDetails() throws JSONException {
     String email = "Create_" + UUID.randomUUID() + "@test.com";
 
@@ -114,7 +94,6 @@ public class UsersControllerIntegrationTest {
 
   @Test
   @DisplayName("GET /users requires JWT")
-  @Order(2)
   void testGetUsers_whenMissingJWT_returns403() {
     HttpHeaders headers = new HttpHeaders();
     headers.setAccept(List.of(MediaType.APPLICATION_JSON));
@@ -133,43 +112,66 @@ public class UsersControllerIntegrationTest {
 
 
   @Test
-  @DisplayName("/login works")
-  @Order(3)
-  void testUserLogin_whenValidCredentialsProvided_ReturnsJWTAuthorizationHeader()
-      throws JSONException {
+  @DisplayName("/login works when valid user exists")
+  void testUserLogin_whenValidCredentialsProvided_ReturnsJWTAuthorizationHeader() throws JSONException {
+    // Step 1: Create user first
+    UserDto user = new UserDto();
+    user.setEmail(TEST_EMAIL);
+    user.setPassword(TEST_PASSWORD);
+    user.setFirstName("Test");
+    user.setLastName("User");
+    usersService.createUser(user);
+
+    // Step 2: Login with correct credentials
     JSONObject loginCredentials = new JSONObject();
-    loginCredentials.put("email", "edenbercier@gmail.com");
-    loginCredentials.put("password", "12345678");
+    loginCredentials.put("email", TEST_EMAIL);
+    loginCredentials.put("password", TEST_PASSWORD);
 
     HttpEntity<String> request = new HttpEntity<>(loginCredentials.toString());
+    ResponseEntity<String> response = testRestTemplate.postForEntity("/login", request, String.class);
 
-    ResponseEntity<Void> response = testRestTemplate.postForEntity("/users/login", request,
-        Void.class);
+    // Step 3: Parse token and userId from JSON body
+    JSONObject body = new JSONObject(response.getBody());
+    String token = body.getString("token");
+    String userId = body.getString("userId");
 
-    authorizationToken = response.getHeaders().getFirst(SecurityConstants.HEADER_STRING);
-
+    // Step 4: Validate response
     assertEquals(HttpStatus.OK, response.getStatusCode());
-    assertNotNull(authorizationToken);
-    assertNotNull(response.getHeaders().getFirst("UserID"));
+    assertNotNull(token);
+    assertNotNull(userId);
   }
 
 
   @Test
-  @Order(4)
-  @DisplayName("GET /users works")
-  void testGetUsers_whenValidJWTProvided_returnsUsers() {
-    HttpHeaders headers = new HttpHeaders();
-    headers.setAccept(List.of(MediaType.APPLICATION_JSON));
-    headers.setBearerAuth(authorizationToken);
+  @DisplayName("GET /users works with valid JWT")
+  void testGetUsers_withValidJwt_returnsUsers() throws JSONException {
+    // Create user
+    UserDto user = new UserDto();
+    user.setEmail(TEST_EMAIL);
+    user.setPassword(TEST_PASSWORD);
+    user.setFirstName("Test");
+    user.setLastName("User");
+    usersService.createUser(user);
 
-    HttpEntity<Void> requestEntity = new HttpEntity<>(headers);
+    // Login and extract token
+    JSONObject login = new JSONObject()
+        .put("email", TEST_EMAIL)
+        .put("password", TEST_PASSWORD);
+
+    HttpEntity<String> loginRequest = new HttpEntity<>(login.toString());
+    ResponseEntity<String> loginResponse = testRestTemplate.postForEntity("/login", loginRequest, String.class);
+    String token = new JSONObject(loginResponse.getBody()).getString("token");
+
+    // GET /users with token
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+    HttpEntity<Void> request = new HttpEntity<>(headers);
 
     ResponseEntity<List<UserRest>> response = testRestTemplate.exchange(
         "/users",
         HttpMethod.GET,
-        requestEntity,
-        new ParameterizedTypeReference<>() {
-        }
+        request,
+        new ParameterizedTypeReference<>() {}
     );
 
     assertEquals(HttpStatus.OK, response.getStatusCode());

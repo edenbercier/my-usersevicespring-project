@@ -24,7 +24,6 @@ public class UsersRepositoryTest {
   void setup() {
     // First User
     userEntity = new UserEntity();
-    UserEntity userEntity = new UserEntity();
     userEntity.setFirstName("Eden");
     userEntity.setLastName("Bercier");
     userEntity.setEmail("email1");
