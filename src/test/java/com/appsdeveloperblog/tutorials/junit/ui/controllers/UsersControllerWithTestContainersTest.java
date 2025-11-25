@@ -10,9 +10,14 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThan;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.springframework.test.util.AssertionErrors.assertEquals;
 
 import com.appsdeveloperblog.tutorials.junit.security.SecurityConstants;
 import com.appsdeveloperblog.tutorials.junit.service.UsersService;
+import com.appsdeveloperblog.tutorials.junit.shared.UserDto;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.builder.ResponseSpecBuilder;
@@ -20,6 +25,8 @@ import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.filter.log.ResponseLoggingFilter;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
+import java.nio.charset.StandardCharsets;
+import java.security.Key;
 import java.util.HashMap;
 import java.util.Map;
 import javax.sql.DataSource;
@@ -75,40 +82,30 @@ public class UsersControllerWithTestContainersTest {
   void setupRestAssuredAndAuthenticate() throws JSONException {
     RestAssured.baseURI = "http://localhost";
     RestAssured.port = port;
-    RestAssured.filters(new RequestLoggingFilter());
-    RestAssured.filters(new ResponseLoggingFilter());
+    RestAssured.filters(new RequestLoggingFilter(), new ResponseLoggingFilter());
 
     RestAssured.requestSpecification = new RequestSpecBuilder()
         .setContentType(ContentType.JSON)
         .setAccept(ContentType.JSON)
-        .addFilter(new RequestLoggingFilter())
         .build();
+
     RestAssured.responseSpecification = new ResponseSpecBuilder()
-        //    .expectStatusCode(anyOf(is(200),is(201)))
         .expectResponseTime(lessThan(2000L))
-        //  .expectBody("id", notNullValue())
         .build();
 
-    // 1️⃣ Register the user via HTTP
-    JSONObject signupPayload = new JSONObject()
-        .put("firstName", "Eden")
-        .put("lastName", "Bercier")
-        .put("email", "test@test.com")
-        .put("password", "123456789")
-        .put("repeatPassword", "123456789");
+    // ✅ Create admin user directly using the service
+    UserDto user = new UserDto();
+    user.setFirstName("Eden");
+    user.setLastName("Bercier");
+    user.setEmail(TEST_EMAIL);
+    user.setPassword(TEST_PASSWORD);
+    user.setRole("ADMIN"); // ✅ Set role to ADMIN
+    usersService.createUser(user);
 
-    given()
-        .contentType(ContentType.JSON)
-        .body(signupPayload.toString())
-        .when()
-        .post("/users")
-        .then()
-        .statusCode(anyOf(is(200), is(201)));
-
-    // 2️⃣ Retry login (polling up to 5 times if needed)
+    // 2️⃣ Login to get the JWT token
     loginPayload = new JSONObject()
-        .put("email", "test@test.com")
-        .put("password", "123456789");
+        .put("email", TEST_EMAIL)
+        .put("password", TEST_PASSWORD);
 
     int retries = 5;
     for (int i = 0; i < retries; i++) {
@@ -118,36 +115,38 @@ public class UsersControllerWithTestContainersTest {
           .when()
           .post("/login");
 
-      // Debugging output (can keep temporarily)
-      System.out.println("Login attempt #" + (i + 1));
-      System.out.println("Status: " + response.statusCode());
-      System.out.println("Headers: " + response.getHeaders());
-      System.out.println("Body: " + response.asString());
-
       if (response.statusCode() == 200) {
-        String token = response
-            .jsonPath()
-            .getString("token");
+        String token = response.jsonPath().getString("token");
         if (token != null && token.startsWith("Bearer ")) {
           this.authorizationToken = token.replace("Bearer ", "");
-          return; // ✅ Successful login
+          return;
         } else {
-          throw new IllegalStateException(
-              "Token missing or malformed in body: " + response.asString());
+          throw new IllegalStateException("Token missing or malformed in body: " + response.asString());
         }
       }
-
       try {
         Thread.sleep(200);
-      } catch (InterruptedException ignored) {
-      }
+      } catch (InterruptedException ignored) {}
     }
+
     throw new IllegalStateException("Failed to log in after registering user.");
+  }
+  private String extractRoleFromJwt(String jwt) {
+    String secret = SecurityConstants.TOKEN_SECRET; // <- use constant
+    Key key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    Claims claims = Jwts.parserBuilder()
+                        .setSigningKey(key)
+                        .build()
+                        .parseClaimsJws(jwt)
+                        .getBody();
+    return claims.get("role", String.class);
   }
 
   @Test
   @DisplayName("The MySQL container is created and running")
   void isTestContainerRunning() {
+
+    assertEquals("ADMIN", extractRoleFromJwt(authorizationToken), "Expected ADMIN role in JWT");
 
     given()
 
@@ -163,6 +162,27 @@ public class UsersControllerWithTestContainersTest {
         .body("size()", greaterThanOrEqualTo(1))
         .body("[0].email", not(emptyOrNullString()));
   }
+  @Test
+  @DisplayName("POST /register fails when passwords do not match")
+  void testRegisterUser_whenPasswordsDoNotMatch_returnsError() throws JSONException {
+    JSONObject payload = new JSONObject()
+        .put("firstName", "Mismatch")
+        .put("lastName", "Case")
+        .put("email", "fail@test.com")
+        .put("password", "password1")
+        .put("repeatPassword", "password2");
+
+    given()
+        .contentType(ContentType.JSON)
+        .body(payload.toString())
+        .when()
+        .post("/register")
+        .then()
+        .statusCode(500) // or 400 depending on how you handle mismatch
+        .body("message", not(emptyOrNullString()));
+  }
+
+
 
   @Test
   @DisplayName("GET /Users access fails when Missing JWT")
@@ -180,6 +200,8 @@ public class UsersControllerWithTestContainersTest {
   @Test
   @DisplayName("GET /users authorized access works with valid JWT succeds")
   void testAuthorizedAccessToUsers_withValidJWTToken_shouldReturnUsers() {
+    assertEquals("ADMIN", extractRoleFromJwt(authorizationToken), "Expected ADMIN role in JWT");
+
     given()
         .auth()
         .oauth2(authorizationToken)
@@ -212,37 +234,44 @@ public class UsersControllerWithTestContainersTest {
         .body("userId", not(emptyOrNullString()))
         .body("token", not(emptyOrNullString()));
   }
-//  Updated your backend to return JSON (the modern way)
-// Validated null before calling .replace(...)
-// Used jsonPath() to read the token from body
-// Made login setup logic retry and fail loudly if it fails
-// Logged full responses during test failures (great for debugging)
-// Cleaned up your tests to reflect updated login behavior
-// Followed professional standards of error handling and parsing
-// Test Then When You send Valid Token You can receive User Associated with that JWT
-    @Test
-    @DisplayName("Get /Users returns User Info when JWT is valid")
-    void testGetUser_withValidJWT_returnsUserDetails() {
-    Map<String, String> loginPayload = Map.of(
-        "email", TEST_EMAIL,
-        "password", TEST_PASSWORD
-    );
 
-  given()//Arrange
-      .auth()
-      .oauth2(authorizationToken)
-      .accept(ContentType.JSON)
-      .when()
-      .get("/users")
-      .then()//Assert
-      .statusCode(200)
-      .contentType(ContentType.JSON)
-         .body("[0].email", equalTo(TEST_EMAIL))
-         .body("[0].firstName", equalTo("Eden"))
-         .body("[0].lastName", equalTo("Bercier"))
-         .body("[0].userId", not(emptyOrNullString()))
-         .body("[0].password", not(emptyOrNullString()))
-         .body("[0].repeatPassword", not(emptyOrNullString()));
-    }
+  @Test
+  @DisplayName("GET /users returns User Info when JWT is valid")
+  void testGetUser_withValidJWT_returnsUserDetails() {
+    // Ensure our token is ADMIN
+    assertEquals("ADMIN", extractRoleFromJwt(authorizationToken), "Expected ADMIN role in JWT");
+
+    given()
+        .auth()
+        .oauth2(authorizationToken)
+        .accept(ContentType.JSON)
+        .when()
+        .get("/users")
+        .then()
+        .statusCode(200)
+        .contentType(ContentType.JSON)
+        // Find the user by email instead of assuming index 0
+        .body(
+            String.format("find { it.email == '%s' }.email", TEST_EMAIL),
+            equalTo(TEST_EMAIL)
+        )
+        .body(
+            String.format("find { it.email == '%s' }.firstName", TEST_EMAIL),
+            equalTo("Eden")
+        )
+        .body(
+            String.format("find { it.email == '%s' }.lastName", TEST_EMAIL),
+            equalTo("Bercier")
+        )
+        .body(
+            String.format("find { it.email == '%s' }.userId", TEST_EMAIL),
+            not(emptyOrNullString())
+        )
+        .body(String.format("find { it.email == '%s' }.role", TEST_EMAIL), equalTo("ADMIN")
+        );
+
 
   }
+
+
+}

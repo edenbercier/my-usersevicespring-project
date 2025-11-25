@@ -1,10 +1,13 @@
 package com.appsdeveloperblog.tutorials.junit.service;
 
+import com.appsdeveloperblog.tutorials.junit.Permission;
+import com.appsdeveloperblog.tutorials.junit.Rbac;
 import com.appsdeveloperblog.tutorials.junit.io.UserEntity;
 import com.appsdeveloperblog.tutorials.junit.io.UsersRepository;
 import com.appsdeveloperblog.tutorials.junit.shared.UserDto;
 import com.appsdeveloperblog.userservice.exception.UsersServiceException;
 import java.lang.reflect.Type;
+import java.nio.file.AccessDeniedException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -49,12 +52,19 @@ public class UsersServiceImpl implements UsersService {
     userEntity.setUserId(publicUserId);
     userEntity.setEncryptedPassword("{bcrypt}" + passwordEncoder.encode(user.getPassword()));
 
+
+    if (user.getRole() == null) {
+      userEntity.setRole("USER"); //
+    } else {
+      userEntity.setRole(user.getRole());
+    }
+
     UserEntity storedUserDetails = usersRepository.save(userEntity);
 
     UserDto returnValue = modelMapper.map(storedUserDetails, UserDto.class);
-
     return returnValue;
   }
+
 
   @Override
   public List<UserDto> getUsers(int page, int limit) {
@@ -102,12 +112,10 @@ public class UsersServiceImpl implements UsersService {
   }
 
   @Override
-  public UserDto getUserByUserId(String userId) {
-    UserEntity userEntity = usersRepository.findByUserId(userId);
-
-    if (userEntity == null) {
-      throw new UsernameNotFoundException("User ID: " + userId);
-    }
+  public UserDto getUserByUserId(String role, String userId) {
+      UserEntity userEntity = usersRepository.findByUserId(userId);
+    if (userId == null || userId.isBlank()) {
+      throw new IllegalArgumentException("userId must be provided");}
 
     return modelMapper.map(userEntity, UserDto.class);
   }

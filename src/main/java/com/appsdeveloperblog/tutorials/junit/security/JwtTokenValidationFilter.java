@@ -51,7 +51,7 @@ public class JwtTokenValidationFilter extends BasicAuthenticationFilter {
         return new UsernamePasswordAuthenticationToken(user, null, null);
       }
     } catch (Exception e) {
-      logger.info("❌ Failed to parse JWT: " + e.getMessage());
+      logger.info("❌`` Failed to parse JWT: " + e.getMessage());
       e.printStackTrace();
     }
 

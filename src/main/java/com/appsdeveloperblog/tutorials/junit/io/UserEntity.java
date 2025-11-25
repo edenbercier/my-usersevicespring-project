@@ -17,7 +17,6 @@ public class UserEntity implements Serializable {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private long id;
-
   @Column(nullable = false, unique = true)
   private String userId;
 
@@ -32,7 +31,16 @@ public class UserEntity implements Serializable {
 
   @Column(nullable = false)
   private String encryptedPassword;
+  @Column(nullable = false)
+  private String role;
 
+  public String getRole() {
+    return role;
+  }
+
+  public void setRole(String role) {
+    this.role = role;
+  }
   public long getId() {
     return id;
   }

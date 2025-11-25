@@ -66,8 +66,27 @@ public class UsersControllerIntegrationTest {
   @Test
   @DisplayName("User can be created")
   void testCreateUser_whenValidDetailsProvided_returnsUserDetails() throws JSONException {
-    String email = "Create_" + UUID.randomUUID() + "@test.com";
+    // 👇 Step 1: Login to get JWT
+    UserDto adminUser = new UserDto();
+    adminUser.setEmail(TEST_EMAIL);
+    adminUser.setPassword(TEST_PASSWORD);
+    adminUser.setFirstName("Admin");
+    adminUser.setLastName("User");
+    adminUser.setRole("ADMIN"); // Important
+    usersService.createUser(adminUser);
 
+    JSONObject loginJson = new JSONObject()
+        .put("email", TEST_EMAIL)
+        .put("password", TEST_PASSWORD);
+
+    HttpEntity<String> loginRequest = new HttpEntity<>(loginJson.toString());
+    ResponseEntity<String> loginResponse = testRestTemplate.postForEntity("/login", loginRequest, String.class);
+
+    assertEquals(HttpStatus.OK, loginResponse.getStatusCode());
+    String token = new JSONObject(loginResponse.getBody()).getString("token");
+
+    // 👇 Step 2: Create another user using authenticated request
+    String email = "Create_" + UUID.randomUUID() + "@test.com";
     JSONObject userDetailsRequestJson = new JSONObject();
     userDetailsRequestJson.put("firstName", "Eden");
     userDetailsRequestJson.put("lastName", "Bercier");
@@ -78,19 +97,23 @@ public class UsersControllerIntegrationTest {
     HttpHeaders headers = new HttpHeaders();
     headers.setContentType(MediaType.APPLICATION_JSON);
     headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+    headers.setBearerAuth(token); // 👈 Inject JWT here
 
     HttpEntity<String> request = new HttpEntity<>(userDetailsRequestJson.toString(), headers);
 
-    ResponseEntity<UserRest> createdUserDetailsEntity = testRestTemplate.postForEntity("/users",
-        request, UserRest.class);
-    UserRest createdUserDetails = createdUserDetailsEntity.getBody();
+    ResponseEntity<UserRest> createdUserDetailsEntity =
+        testRestTemplate.postForEntity("/users", request, UserRest.class);
 
-    assertEquals(HttpStatus.OK, createdUserDetailsEntity.getStatusCode());
+    assertEquals(HttpStatus.CREATED, createdUserDetailsEntity.getStatusCode()); // or OK if your controller returns 200
+
+    UserRest createdUserDetails = createdUserDetailsEntity.getBody();
+    assertNotNull(createdUserDetails);
     assertEquals(userDetailsRequestJson.getString("firstName"), createdUserDetails.getFirstName());
     assertEquals(userDetailsRequestJson.getString("lastName"), createdUserDetails.getLastName());
     assertEquals(userDetailsRequestJson.getString("email"), createdUserDetails.getEmail());
     assertFalse(createdUserDetails.getUserId().trim().isEmpty());
   }
+
 
   @Test
   @DisplayName("GET /users requires JWT")

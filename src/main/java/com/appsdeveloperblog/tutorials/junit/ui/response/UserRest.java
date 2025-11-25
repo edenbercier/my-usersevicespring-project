@@ -8,7 +8,7 @@ public class UserRest {
   private String email;
   private String password;
   private String repeatPassword;
-
+// Omit password and repeatpassword sensitive info does no go back to client
   public String getUserId() {
     return userId;
   }

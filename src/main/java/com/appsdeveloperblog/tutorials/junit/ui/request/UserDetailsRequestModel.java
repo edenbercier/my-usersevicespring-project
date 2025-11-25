@@ -24,8 +24,10 @@ public class UserDetailsRequestModel {
 
   @NotBlank
   @Size(min = 8, max = 16, message = "Repeat Password must be equal to or greater than 8 characters and less than 16 characters")
+
   private String repeatPassword;
 
+  private String role;
   public String getFirstName() {
     return firstName;
   }
@@ -65,4 +67,7 @@ public class UserDetailsRequestModel {
   public void setRepeatPassword(String repeatPassword) {
     this.repeatPassword = repeatPassword;
   }
-}
+  public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
+  }
+
