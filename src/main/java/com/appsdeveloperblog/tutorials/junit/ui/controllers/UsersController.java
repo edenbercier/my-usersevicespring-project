@@ -15,6 +15,7 @@ import org.modelmapper.ModelMapper;
 import org.modelmapper.TypeToken;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.validation.annotation.Validated;
@@ -40,6 +41,14 @@ public class UsersController {
     this.usersService = usersService;
     this.modelMapper = modelMapper;
   }
+  private String extractRole(UserDetails userDetails) {
+    return userDetails.getAuthorities()
+                      .iterator()
+                      .next()
+                      .getAuthority()
+                      .replace("ROLE_", "")
+                      .toLowerCase();
+  }
   @PostMapping("/register")
   public UserRest registerUser(@RequestBody @Valid UserDetailsRequestModel userDetails) {
     if (!userDetails.getPassword().equals(userDetails.getRepeatPassword())) {
@@ -47,7 +56,7 @@ public class UsersController {
     }
     UserDto userDto = modelMapper.map(userDetails, UserDto.class);
 
-    // Assign default role for public users
+    // default role for public users
     userDto.setRole("viewer");
 
     UserDto createdUser = usersService.createUser(userDto);
@@ -55,54 +64,34 @@ public class UsersController {
     return modelMapper.map(createdUser, UserRest.class);
 
   }
-//  @PostMapping
-//  public UserRest createUserForAdmin(@RequestBody @Valid UserDetailsRequestModel userDetails)
-//      throws Exception {
-//    UserDto userDto = modelMapper.map(userDetails, UserDto.class);
-//
-//    UserDto createdUser = usersService.createUser(userDto);
-//
-//    return modelMapper.map(createdUser, UserRest.class);
-//  }
+
+  @PreAuthorize("hasRole('ADMIN')")
 @PostMapping
 public ResponseEntity<?> createUserAsAdmin(
     @RequestBody @Valid UserDetailsRequestModel userDetails,
     @AuthenticationPrincipal UserDetails currentUser // ← who is logged in
 ) {
-  // 1️ Get role of current logged-in user
-  String requesterRole = currentUser.getAuthorities().iterator().next().getAuthority();
-
-  // 2️ RBAC: Block if they don’t have permission
-  if (!Rbac.hasPermission(requesterRole, Permission.USER_CREATE)) {
-    return ResponseEntity.status(403).body("Access denied");
-  }
-
-  // 3️ Map the request body to your internal DTO object
+  //  Map the request body to your internal DTO object
   UserDto userDto = modelMapper.map(userDetails, UserDto.class);
 
-  // 4️ Let admin assign the role (it’s part of the request body)
+  //  Let admin assign the role (it’s part of the request body)
   userDto.setRole(userDetails.getRole());
 
-  // 5️ Save the user
+  //  Save the user
   UserDto createdUser = usersService.createUser(userDto);
   UserRest returnValue = modelMapper.map(createdUser, UserRest.class);
 
-  // 6️ Return success
-  return ResponseEntity.status(201).body(returnValue);
+  // ️ Return success
+  return ResponseEntity.status(201)
+                       .body(returnValue);
 }
 
 
+@PreAuthorize("hasRole('ADMIN')")
   @GetMapping("/{userId}")
   public ResponseEntity<?> getUser(
       @PathVariable String userId,
-      @AuthenticationPrincipal UserDetails currentUser
-  ) {
-    String role = currentUser.getAuthorities().iterator().next().getAuthority();
-    String currentEmail = currentUser.getUsername(); // or ID depending on your logic
-
-    if (!Rbac.hasPermission(role, Permission.USER_READ) && !usersService.getUserByUserId(userId).getEmail().equals(currentEmail)) {
-      return ResponseEntity.status(403).body("Access denied");
-    }
+      @AuthenticationPrincipal UserDetails currentUser) {
 
     UserDto userDto = usersService.getUserByUserId(userId);
     UserRest returnValue = modelMapper.map(userDto, UserRest.class);
@@ -110,21 +99,13 @@ public ResponseEntity<?> createUserAsAdmin(
   }
 
 
+  @PreAuthorize("hasRole('ADMIN')")
   @GetMapping
   public ResponseEntity<?> getUsers(
       @RequestParam(value = "page", defaultValue = "0") int page,
       @RequestParam(value = "limit", defaultValue = "2") int limit,
       @AuthenticationPrincipal UserDetails userDetails
   ) {
-    String role = userDetails.getAuthorities()
-                             .iterator()
-                             .next()
-                             .getAuthority(); // Extract role
-
-    if (!Rbac.hasPermission(role, Permission.USER_READ)) {
-      return ResponseEntity.status(403).body("Access denied");
-    }
-
     List<UserDto> users = usersService.getUsers(page, limit);
     Type listType = new TypeToken<List<UserRest>>() {}.getType();
     List<UserRest> returnValue = modelMapper.map(users, listType);

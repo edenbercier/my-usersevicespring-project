@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -108,11 +109,19 @@ public class UsersServiceImpl implements UsersService {
       throw new UsernameNotFoundException(email);
     }
 
-    return new User(userEntity.getEmail(), userEntity.getEncryptedPassword(), new ArrayList<>());
+    String authority = "ROLE_" + userEntity.getRole().toUpperCase();
+    System.out.println("🛡 Creating user with authority: " + authority);
+
+
+    return new org.springframework.security.core.userdetails.User(
+        userEntity.getEmail(),
+        userEntity.getEncryptedPassword(),
+        List.of(new SimpleGrantedAuthority(authority))
+    );
   }
 
   @Override
-  public UserDto getUserByUserId(String role, String userId) {
+  public UserDto getUserByUserId( String userId) {
       UserEntity userEntity = usersRepository.findByUserId(userId);
     if (userId == null || userId.isBlank()) {
       throw new IllegalArgumentException("userId must be provided");}

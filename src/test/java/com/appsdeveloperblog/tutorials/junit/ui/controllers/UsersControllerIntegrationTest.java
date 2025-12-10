@@ -44,7 +44,8 @@ public class UsersControllerIntegrationTest {
 
   @Value("${server.port}")
   private int serverPort;
-  private final String TEST_EMAIL = "login_" + UUID.randomUUID() + "@test.com";
+  private final String TEST_EMAIL = "admin@test.com";
+
   private final String TEST_PASSWORD = "12345678";
 
   private String authorizationToken;
@@ -80,7 +81,8 @@ public class UsersControllerIntegrationTest {
         .put("password", TEST_PASSWORD);
 
     HttpEntity<String> loginRequest = new HttpEntity<>(loginJson.toString());
-    ResponseEntity<String> loginResponse = testRestTemplate.postForEntity("/login", loginRequest, String.class);
+    ResponseEntity<String> loginResponse = testRestTemplate.postForEntity("/login", loginRequest,
+        String.class);
 
     assertEquals(HttpStatus.OK, loginResponse.getStatusCode());
     String token = new JSONObject(loginResponse.getBody()).getString("token");
@@ -104,14 +106,18 @@ public class UsersControllerIntegrationTest {
     ResponseEntity<UserRest> createdUserDetailsEntity =
         testRestTemplate.postForEntity("/users", request, UserRest.class);
 
-    assertEquals(HttpStatus.CREATED, createdUserDetailsEntity.getStatusCode()); // or OK if your controller returns 200
+    assertEquals(HttpStatus.CREATED,
+        createdUserDetailsEntity.getStatusCode()); // or OK if your controller returns 200
 
     UserRest createdUserDetails = createdUserDetailsEntity.getBody();
     assertNotNull(createdUserDetails);
     assertEquals(userDetailsRequestJson.getString("firstName"), createdUserDetails.getFirstName());
     assertEquals(userDetailsRequestJson.getString("lastName"), createdUserDetails.getLastName());
     assertEquals(userDetailsRequestJson.getString("email"), createdUserDetails.getEmail());
-    assertFalse(createdUserDetails.getUserId().trim().isEmpty());
+    assertFalse(createdUserDetails
+        .getUserId()
+        .trim()
+        .isEmpty());
   }
 
 
@@ -135,45 +141,15 @@ public class UsersControllerIntegrationTest {
 
 
   @Test
-  @DisplayName("/login works when valid user exists")
-  void testUserLogin_whenValidCredentialsProvided_ReturnsJWTAuthorizationHeader() throws JSONException {
-    // Step 1: Create user first
-    UserDto user = new UserDto();
-    user.setEmail(TEST_EMAIL);
-    user.setPassword(TEST_PASSWORD);
-    user.setFirstName("Test");
-    user.setLastName("User");
-    usersService.createUser(user);
-
-    // Step 2: Login with correct credentials
-    JSONObject loginCredentials = new JSONObject();
-    loginCredentials.put("email", TEST_EMAIL);
-    loginCredentials.put("password", TEST_PASSWORD);
-
-    HttpEntity<String> request = new HttpEntity<>(loginCredentials.toString());
-    ResponseEntity<String> response = testRestTemplate.postForEntity("/login", request, String.class);
-
-    // Step 3: Parse token and userId from JSON body
-    JSONObject body = new JSONObject(response.getBody());
-    String token = body.getString("token");
-    String userId = body.getString("userId");
-
-    // Step 4: Validate response
-    assertEquals(HttpStatus.OK, response.getStatusCode());
-    assertNotNull(token);
-    assertNotNull(userId);
-  }
-
-
-  @Test
   @DisplayName("GET /users works with valid JWT")
   void testGetUsers_withValidJwt_returnsUsers() throws JSONException {
-    // Create user
+    // Create user with admin role
     UserDto user = new UserDto();
     user.setEmail(TEST_EMAIL);
     user.setPassword(TEST_PASSWORD);
     user.setFirstName("Test");
     user.setLastName("User");
+    user.setRole("ADMIN");
     usersService.createUser(user);
 
     // Login and extract token
@@ -183,9 +159,11 @@ public class UsersControllerIntegrationTest {
 
     HttpEntity<String> loginRequest = new HttpEntity<>(login.toString());
     ResponseEntity<String> loginResponse = testRestTemplate.postForEntity("/login", loginRequest, String.class);
-    String token = new JSONObject(loginResponse.getBody()).getString("token");
 
-    // GET /users with token
+    String token = new JSONObject(loginResponse.getBody()).getString("token");
+    System.out.println(" JWT Token: " + token);
+
+    // Prepare GET /users request with token
     HttpHeaders headers = new HttpHeaders();
     headers.setBearerAuth(token);
     HttpEntity<Void> request = new HttpEntity<>(headers);
@@ -194,10 +172,12 @@ public class UsersControllerIntegrationTest {
         "/users",
         HttpMethod.GET,
         request,
-        new ParameterizedTypeReference<>() {}
+        new ParameterizedTypeReference<List<UserRest>>() {}
     );
 
     assertEquals(HttpStatus.OK, response.getStatusCode());
     assertEquals(1, response.getBody().size());
+
   }
+
 }

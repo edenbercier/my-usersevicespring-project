@@ -61,22 +61,25 @@ public class LoginAuthenticationFilter extends UsernamePasswordAuthenticationFil
       Authentication auth) throws IOException, ServletException {
 
     String userName = ((UserDetails) auth.getPrincipal()).getUsername();
+    UsersService userService = (UsersService) SpringApplicationContext.getBean("usersService");
 
+    UserDto userDto = userService.getUser(userName);
     String token = Jwts.builder()
         .setSubject(userName)
+        .claim("role", userDto.getRole())
         .setExpiration(new Date(System.currentTimeMillis() + (long) 864000000))
         .signWith(SignatureAlgorithm.HS512, SecurityConstants.TOKEN_SECRET)
         .compact();
-    UsersService userService = (UsersService) SpringApplicationContext.getBean("usersService");
-    UserDto userDto = userService.getUser(userName);
 
-    // ✅ Build response JSON
+
+
+    //  Build response JSON
     Map<String, Object> responseBody = Map.of(
         "userId", userDto.getUserId(),
         "token", SecurityConstants.TOKEN_PREFIX + token
     );
 
-    // ✅ Set content type and write JSON
+    //  Set content type and write JSON
     res.setContentType("application/json");
     res.setCharacterEncoding("UTF-8");
     new ObjectMapper().writeValue(res.getWriter(), responseBody);
