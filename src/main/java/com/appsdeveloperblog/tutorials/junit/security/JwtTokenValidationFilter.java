@@ -1,5 +1,6 @@
 package com.appsdeveloperblog.tutorials.junit.security;
 
+import com.appsdeveloperblog.userservice.exception.JwtAuthenticationException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import jakarta.servlet.FilterChain;
@@ -37,10 +38,24 @@ public class JwtTokenValidationFilter extends BasicAuthenticationFilter {
       if (authentication != null) {
         SecurityContextHolder.getContext().setAuthentication(authentication);
       }
+     try {
+      authentication = getAuthentication(token);
+
+      if (authentication == null) {
+        throw new JwtAuthenticationException("Invalid JWT token");
+      }
+
+    } catch (Exception ex) {
+      throw new JwtAuthenticationException("Invalid or expired JWT: " + ex.getMessage());
     }
 
-    chain.doFilter(req, res);
+    SecurityContextHolder.getContext().setAuthentication(authentication);
   }
+
+    chain.doFilter(req, res);
+
+    }
+
 
   private UsernamePasswordAuthenticationToken getAuthentication(String token) {
     try {
@@ -65,8 +80,7 @@ public class JwtTokenValidationFilter extends BasicAuthenticationFilter {
       }
 
     } catch (Exception e) {
-      logger.info(" Failed to parse JWT: " + e.getMessage());
-      e.printStackTrace();
+      throw new JwtAuthenticationException("Invalid or expired JWT: " + e.getMessage());
     }
 
     return null;

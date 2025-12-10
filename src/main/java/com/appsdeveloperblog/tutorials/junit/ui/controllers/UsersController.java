@@ -86,7 +86,6 @@ public ResponseEntity<?> createUserAsAdmin(
                        .body(returnValue);
 }
 
-
 @PreAuthorize("hasRole('ADMIN')")
   @GetMapping("/{userId}")
   public ResponseEntity<?> getUser(
