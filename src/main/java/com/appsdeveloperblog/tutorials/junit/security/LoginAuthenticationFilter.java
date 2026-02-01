@@ -1,19 +1,21 @@
 package com.appsdeveloperblog.tutorials.junit.security;
 
+import com.appsdeveloperblog.tutorials.junit.security.refresh.entity.RefreshToken;
+import com.appsdeveloperblog.tutorials.junit.security.refresh.service.RefreshTokenService;
+import com.appsdeveloperblog.tutorials.junit.security.token.JwtService;
 import com.appsdeveloperblog.tutorials.junit.service.UsersService;
 import com.appsdeveloperblog.tutorials.junit.shared.SpringApplicationContext;
 import com.appsdeveloperblog.tutorials.junit.shared.UserDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.Map;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -25,12 +27,20 @@ import org.springframework.util.StreamUtils;
 public class LoginAuthenticationFilter extends UsernamePasswordAuthenticationFilter {
 
   private final AuthenticationManager authenticationManager;
+  private final JwtService jwtService;
+  private final UsersService usersService;
+  private final RefreshTokenService refreshTokenService;
 
-  public LoginAuthenticationFilter(AuthenticationManager authenticationManager) {
-    super();
+  public LoginAuthenticationFilter(
+      AuthenticationManager authenticationManager,JwtService jwtService, UsersService usersService, RefreshTokenService refreshTokenService
+  ) {
     this.authenticationManager = authenticationManager;
+    this.jwtService = jwtService;
+    this.usersService = usersService;
+    this.refreshTokenService = refreshTokenService;
     setFilterProcessesUrl("/login");
   }
+
 
   @Override
   public Authentication attemptAuthentication(HttpServletRequest req,
@@ -58,20 +68,18 @@ public class LoginAuthenticationFilter extends UsernamePasswordAuthenticationFil
   protected void successfulAuthentication(HttpServletRequest req,
       HttpServletResponse res,
       FilterChain chain,
-      Authentication auth) throws IOException, ServletException {
+      Authentication auth) throws IOException {
 
     String userName = ((UserDetails) auth.getPrincipal()).getUsername();
-    UsersService userService = (UsersService) SpringApplicationContext.getBean("usersService");
 
-    UserDto userDto = userService.getUser(userName);
-    String token = Jwts.builder()
-        .setSubject(userName)
-        .claim("role", userDto.getRole())
-        .setExpiration(new Date(System.currentTimeMillis() + (long) 864000000))
-        .signWith(SignatureAlgorithm.HS512, SecurityConstants.TOKEN_SECRET)
-        .compact();
+    UserDto userDto = usersService.getUser(userName);
 
+    String role = userDto.getRoles().get(0);
 
+    String token = jwtService.generateAccessToken(
+        userName,
+        role
+    );
 
     //  Build response JSON
     Map<String, Object> responseBody = Map.of(
@@ -83,6 +91,22 @@ public class LoginAuthenticationFilter extends UsernamePasswordAuthenticationFil
     res.setContentType("application/json");
     res.setCharacterEncoding("UTF-8");
     new ObjectMapper().writeValue(res.getWriter(), responseBody);
+
+
+    RefreshToken refreshToken =
+        refreshTokenService.create(userName);
+
+    ResponseCookie refreshCookie = ResponseCookie
+        .from("refreshToken", refreshToken.getToken())
+        .httpOnly(true)
+        .secure(true)                  // false only for localhost HTTP
+        .sameSite("Strict")
+        .path("/auth/refresh")
+        .maxAge(Duration.ofDays(14))
+        .build();
+
+    res.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
+
   }
 
   }

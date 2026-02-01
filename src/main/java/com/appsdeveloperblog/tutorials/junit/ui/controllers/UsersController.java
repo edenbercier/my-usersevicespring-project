@@ -2,6 +2,8 @@ package com.appsdeveloperblog.tutorials.junit.ui.controllers;
 
 import com.appsdeveloperblog.tutorials.junit.Permission;
 import com.appsdeveloperblog.tutorials.junit.Rbac;
+import com.appsdeveloperblog.tutorials.junit.security.refresh.entity.RefreshToken;
+import com.appsdeveloperblog.tutorials.junit.security.refresh.service.RefreshTokenService;
 import com.appsdeveloperblog.tutorials.junit.service.UsersService;
 import com.appsdeveloperblog.tutorials.junit.shared.UserDto;
 import com.appsdeveloperblog.tutorials.junit.ui.request.UserDetailsRequestModel;
@@ -35,11 +37,13 @@ public class UsersController {
 
   private final UsersService usersService;
   private final ModelMapper modelMapper;
+  private final RefreshTokenService refreshTokenService;
 
   @Autowired
-  public UsersController(UsersService usersService, ModelMapper modelMapper) {
+  public UsersController(UsersService usersService, ModelMapper modelMapper, RefreshTokenService refreshTokenService) {
     this.usersService = usersService;
     this.modelMapper = modelMapper;
+    this.refreshTokenService= refreshTokenService;
   }
   private String extractRole(UserDetails userDetails) {
     return userDetails.getAuthorities()
@@ -57,7 +61,7 @@ public class UsersController {
     UserDto userDto = modelMapper.map(userDetails, UserDto.class);
 
     // default role for public users
-    userDto.setRole("viewer");
+    userDto.setRoles(List.of("viewer"));
 
     UserDto createdUser = usersService.createUser(userDto);
 
@@ -75,7 +79,7 @@ public ResponseEntity<?> createUserAsAdmin(
   UserDto userDto = modelMapper.map(userDetails, UserDto.class);
 
   //  Let admin assign the role (it’s part of the request body)
-  userDto.setRole(userDetails.getRole());
+  userDto.setRoles(userDetails.getRoles());
 
   //  Save the user
   UserDto createdUser = usersService.createUser(userDto);

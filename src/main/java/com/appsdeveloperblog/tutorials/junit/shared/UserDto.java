@@ -1,5 +1,7 @@
 package com.appsdeveloperblog.tutorials.junit.shared;
 
+import java.util.List;
+
 public class UserDto {
 
   private long id;
@@ -9,12 +11,13 @@ public class UserDto {
   private String email;
   private String password;
   private String encryptedPassword;
-  private String role;
-  public String getRole() {
-    return role;
+  private List<String> roles;
+
+  public void setRoles(List<String> roles) {
+    this.roles = roles;
   }
-  public void setRole(String role) {
-    this.role = role;
+  public List<String> getRoles() {
+    return roles;
   }
   public long getId() {
     return id;

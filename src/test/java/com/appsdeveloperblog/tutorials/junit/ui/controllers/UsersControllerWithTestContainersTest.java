@@ -28,6 +28,7 @@ import io.restassured.response.Response;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import javax.sql.DataSource;
 import org.hamcrest.Matcher; // ✅ add this line
@@ -99,12 +100,13 @@ public class UsersControllerWithTestContainersTest {
     user.setLastName("Bercier");
     user.setEmail(TEST_EMAIL);
     user.setPassword(TEST_PASSWORD);
-    user.setRole("ADMIN"); // ✅ Set role to ADMIN
+    user.setRoles(List.of("ADMIN")); // ✅ Set role to ADMIN
     usersService.createUser(user);
 
     // 2️⃣ Login to get the JWT token
     loginPayload = new JSONObject()
         .put("email", TEST_EMAIL)
+
         .put("password", TEST_PASSWORD);
 
     int retries = 5;

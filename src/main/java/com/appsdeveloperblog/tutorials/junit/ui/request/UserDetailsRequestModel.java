@@ -3,6 +3,7 @@ package com.appsdeveloperblog.tutorials.junit.ui.request;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 
 public class UserDetailsRequestModel {
 
@@ -27,7 +28,7 @@ public class UserDetailsRequestModel {
 
   private String repeatPassword;
 
-  private String role;
+  private List<String> roles;
   public String getFirstName() {
     return firstName;
   }
@@ -67,7 +68,11 @@ public class UserDetailsRequestModel {
   public void setRepeatPassword(String repeatPassword) {
     this.repeatPassword = repeatPassword;
   }
-  public String getRole() { return role; }
-    public void setRole(String role) { this.role = role; }
+  public List<String> getRoles() {
+    return roles;
   }
 
+  public void setRoles(List<String> roles) {
+    this.roles = roles;
+  }
+}

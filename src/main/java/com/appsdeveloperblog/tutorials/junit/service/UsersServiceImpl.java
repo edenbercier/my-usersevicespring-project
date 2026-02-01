@@ -54,10 +54,10 @@ public class UsersServiceImpl implements UsersService {
     userEntity.setEncryptedPassword("{bcrypt}" + passwordEncoder.encode(user.getPassword()));
 
 
-    if (user.getRole() == null) {
-      userEntity.setRole("USER"); //
+    if (user.getRoles() == null) {
+      userEntity.setRoles(List.of("USER")); //
     } else {
-      userEntity.setRole(user.getRole());
+      userEntity.setRoles(user.getRoles()); //
     }
 
     UserEntity storedUserDetails = usersRepository.save(userEntity);
@@ -109,14 +109,18 @@ public class UsersServiceImpl implements UsersService {
       throw new UsernameNotFoundException(email);
     }
 
-    String authority = "ROLE_" + userEntity.getRole().toUpperCase();
-    System.out.println("🛡 Creating user with authority: " + authority);
+    List<SimpleGrantedAuthority> authorities = userEntity.getRoles().stream()
+                                                         .map(role -> "ROLE_" + role.toUpperCase())
+                                                         .map(SimpleGrantedAuthority::new)
+                                                         .toList();
+
+    System.out.println("🛡 Creating user with authority: " + authorities);
 
 
     return new org.springframework.security.core.userdetails.User(
         userEntity.getEmail(),
         userEntity.getEncryptedPassword(),
-        List.of(new SimpleGrantedAuthority(authority))
+        authorities
     );
   }
 

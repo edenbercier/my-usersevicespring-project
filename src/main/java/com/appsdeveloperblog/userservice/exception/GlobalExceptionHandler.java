@@ -1,5 +1,8 @@
 package com.appsdeveloperblog.userservice.exception;
 
+import org.springframework.security.access.AccessDeniedException;
+
+import javax.naming.AuthenticationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -17,7 +20,8 @@ import java.util.Map;
 @ControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
-  // 1. Handle @Valid validation errors
+
+  // Handle @Valid validation errors
   @Override
   protected ResponseEntity<Object> handleMethodArgumentNotValid(
       MethodArgumentNotValidException ex,
@@ -36,13 +40,24 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     return new ResponseEntity<>(errors, HttpStatus.BAD_REQUEST);
   }
 
-  // 2. Handle custom business exceptions (you can add more later)
-  @ExceptionHandler(RuntimeException.class)
-  public ResponseEntity<?> handleRuntime(RuntimeException ex) {
-    return new ResponseEntity<>(Map.of("error", ex.getMessage()), HttpStatus.BAD_REQUEST);
+  //  Handle custom business exceptions
+  @ExceptionHandler(AccessDeniedException.class)
+  public ResponseEntity<?> handleAccessDenied(AccessDeniedException ex) {
+    return new ResponseEntity<>(
+        Map.of("error", "Access Denied"),
+        HttpStatus.FORBIDDEN
+    );
+  }
+  @ExceptionHandler(AuthenticationException.class)
+  public ResponseEntity<?> handleAuthentication(AuthenticationException ex) {
+    return new ResponseEntity<>(
+        Map.of("error", ex.getMessage()),
+        HttpStatus.UNAUTHORIZED
+    );
   }
 
-  // 3. Fallback handler (catches ANY unhandled error)
+
+  // Fallback handler (catches ANY unhandled error)
   @ExceptionHandler(Exception.class)
   public ResponseEntity<?> handleGeneral(Exception ex) {
     return new ResponseEntity<>(Map.of("error", ex.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);

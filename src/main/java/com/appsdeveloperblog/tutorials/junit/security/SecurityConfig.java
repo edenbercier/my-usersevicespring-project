@@ -1,6 +1,10 @@
 package com.appsdeveloperblog.tutorials.junit.security;
 
 import com.appsdeveloperblog.tutorials.junit.io.UsersRepository;
+import com.appsdeveloperblog.tutorials.junit.security.refresh.service.RefreshTokenService;
+import com.appsdeveloperblog.tutorials.junit.security.token.JwtService;
+import com.appsdeveloperblog.tutorials.junit.service.UsersService;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,6 +19,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
 
 @Configuration
 @EnableWebSecurity
@@ -25,8 +30,13 @@ public class SecurityConfig {
   private UsersRepository usersRepository;
 
   @Bean
-  public SecurityFilterChain securityFilterChain(HttpSecurity http,
-      AuthenticationConfiguration authConfig,  UserDetailsService userDetailsService)
+  public SecurityFilterChain securityFilterChain(
+      HttpSecurity http,
+      AuthenticationConfiguration authConfig,
+      UserDetailsService userDetailsService,
+      JwtService jwtService,
+      UsersService usersService,
+      RefreshTokenService refreshTokenService)
       throws Exception {
     AuthenticationManager authenticationManager = authConfig.getAuthenticationManager();
     http
@@ -35,15 +45,37 @@ public class SecurityConfig {
         .authorizeHttpRequests(auth -> auth
             .requestMatchers(HttpMethod.POST, "/register").permitAll()
             .requestMatchers(HttpMethod.POST, "/login").permitAll()
+            .requestMatchers(HttpMethod.POST, "/auth/refresh").permitAll()
+            .requestMatchers(HttpMethod.POST, "/auth/logout").permitAll()
             .requestMatchers("/actuator/**").permitAll()
             .anyRequest().authenticated()
         )
-        .addFilter(new LoginAuthenticationFilter(authenticationManager))
-        .addFilter(new JwtTokenValidationFilter(authenticationManager, userDetailsService));
+            .exceptionHandling(ex -> ex
+                .accessDeniedHandler(customAccessDeniedHandler())
+                .authenticationEntryPoint(customAuthenticationEntryPoint())
+            )
+        .addFilter(new LoginAuthenticationFilter(authenticationManager, jwtService,usersService, refreshTokenService ))
+        .addFilter(new JwtTokenValidationFilter(authenticationManager, jwtService));
 
     return http.build();
   }
 
+  @Bean
+  public AccessDeniedHandler customAccessDeniedHandler() {
+    return (request, response, accessDeniedException) -> {
+      response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+      response.setContentType("application/json");
+      response.getWriter().write("{\"error\": \"Access Denied\"}");
+    };
+  }
+  @Bean
+  public org.springframework.security.web.AuthenticationEntryPoint customAuthenticationEntryPoint() {
+    return (request, response, authException) -> {
+      response.setStatus(HttpServletResponse.SC_UNAUTHORIZED); // 401
+      response.setContentType("application/json");
+      response.getWriter().write("{\"error\": \"Unauthorized\"}");
+    };
+  }
   @Bean
   public PasswordEncoder passwordEncoder() {
 

@@ -73,7 +73,7 @@ public class UsersControllerIntegrationTest {
     adminUser.setPassword(TEST_PASSWORD);
     adminUser.setFirstName("Admin");
     adminUser.setLastName("User");
-    adminUser.setRole("ADMIN"); // Important
+    adminUser.setRoles(List.of("ADMIN")); // Important
     usersService.createUser(adminUser);
 
     JSONObject loginJson = new JSONObject()
@@ -149,7 +149,7 @@ public class UsersControllerIntegrationTest {
     user.setPassword(TEST_PASSWORD);
     user.setFirstName("Test");
     user.setLastName("User");
-    user.setRole("ADMIN");
+    user.setRoles(List.of("ADMIN"));
     usersService.createUser(user);
 
     // Login and extract token
