@@ -1,0 +1,6 @@
+services:
+  userservice-build:
+    image: userservice:1.0
+    build:
+      context: .
+      dockerfile: Dockerfile

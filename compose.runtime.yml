@@ -1,0 +1,34 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: userservice-mysql
+    environment:
+      MYSQL_DATABASE: photo_app
+      MYSQL_USER: eden
+      MYSQL_PASSWORD: eden
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"
+    volumes:
+      - userservice-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    image: userservice:1.0
+    container_name: userservice-app
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/photo_app
+      SPRING_DATASOURCE_USERNAME: eden
+      SPRING_DATASOURCE_PASSWORD: eden
+    ports:
+      - "8888:8888"
+
+volumes:
+  userservice-mysql-data:
